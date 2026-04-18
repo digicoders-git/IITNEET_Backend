@@ -143,7 +143,7 @@ exports.updateMyProfile = async (req, res) => {
         const profile = await Profile.findOneAndUpdate(
             { user: req.user._id },
             { $set: updateData },
-            { new: true, upsert: true }
+            { returnDocument: 'after', upsert: true }
         );
 
         if (phone !== undefined || showPhone !== undefined) {
@@ -176,34 +176,14 @@ exports.getFeaturedTutors = async (req, res) => {
         const profiles = await Profile.find({})
             .populate({
                 path: 'user',
-                match: { role: 'tutor', isApproved: true, subscriptionStatus: { $in: ['active'] } },
+                match: { role: 'tutor', isApproved: true, subscriptionStatus: 'active' },
                 select: 'name subscriptionStatus'
             })
             .sort({ ratings: -1 })
-            .limit(6)
+            .limit(3)
             .lean();
 
         const featured = profiles.filter(p => p.user !== null);
-
-        // If not enough subscribed tutors, fill with any approved tutors
-        if (featured.length < 6) {
-            const more = await Profile.find({})
-                .populate({
-                    path: 'user',
-                    match: { role: 'tutor', isApproved: true },
-                    select: 'name subscriptionStatus'
-                })
-                .sort({ ratings: -1 })
-                .limit(6)
-                .lean();
-            const moreFiltered = more.filter(p => p.user !== null);
-            const ids = new Set(featured.map(p => p._id.toString()));
-            for (const p of moreFiltered) {
-                if (!ids.has(p._id.toString())) featured.push(p);
-                if (featured.length >= 6) break;
-            }
-        }
-
         res.json(featured.slice(0, 6));
     } catch (error) {
         res.status(500).json({ message: error.message });

@@ -3,7 +3,7 @@ const router = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
 const {
     createPlan, getPlans, updatePlan, deletePlan,
-    getAllSubscriptions, getActivePlans, purchasePlan, getMySubscription
+    getAllSubscriptions, getActivePlans, createOrder, verifyPurchase, getMySubscription
 } = require('../controllers/subscriptionController');
 
 // Admin routes
@@ -15,7 +15,8 @@ router.get('/all', protect, authorize('admin'), getAllSubscriptions);
 
 // Tutor/Coaching routes
 router.get('/plans', protect, getActivePlans);
-router.post('/purchase', protect, authorize('tutor', 'coaching'), purchasePlan);
+router.post('/create-order', protect, authorize('tutor', 'coaching'), createOrder);
+router.post('/verify-purchase', protect, authorize('tutor', 'coaching'), verifyPurchase);
 router.get('/mine', protect, getMySubscription);
 
 module.exports = router;

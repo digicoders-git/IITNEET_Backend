@@ -27,14 +27,30 @@ const seed = async () => {
             subscriptionStatus: 'active'
         });
 
+        // ── DEFAULT FREE PLAN ──
+        const SubscriptionPlan = require('./models/SubscriptionPlan');
+        const UserSubscription = require('./models/UserSubscription');
+        await SubscriptionPlan.deleteMany({});
+        await UserSubscription.deleteMany({});
+        const defaultPlan = await SubscriptionPlan.create({
+            name: 'Free Starter Plan',
+            price: 0,
+            duration: 365,
+            features: ['Listed on platform', 'Contact unlock enabled', 'Basic profile stats', '1 Year validity'],
+            forRole: 'both',
+            isActive: true,
+            isDefault: true
+        });
+        console.log('Created default free plan (1 year)...');
+
         // ── TUTORS ──
         const tutorData = [
             {
-                user: { name: 'Dr. Rajesh Sharma', email: 'rajesh@iitneet.com', phone: '9876543210', showPhone: false, subscriptionStatus: 'active' },
+                user: { name: 'Dr. Rajesh Sharma', email: 'rajesh@iitneet.com', phone: '9876543210', showPhone: false, subscriptionStatus: 'none' },
                 profile: { bio: 'IIT Delhi alumnus with 12+ years of experience in IIT-JEE Physics. Taught 500+ students, 80% cleared JEE Mains. Specialized in Mechanics, Electrostatics and Modern Physics.', subjects: ['Physics', 'Mathematics'], experience: 12, fees: 2000, location: 'Kota, Rajasthan', ratings: 4.9 }
             },
             {
-                user: { name: 'Priya Verma', email: 'priya@iitneet.com', phone: '9876543211', showPhone: false, subscriptionStatus: 'active' },
+                user: { name: 'Priya Verma', email: 'priya@iitneet.com', phone: '9876543211', showPhone: false, subscriptionStatus: 'none' },
                 profile: { bio: 'MBBS from AIIMS Delhi. Expert NEET Biology tutor with 8 years experience. My students consistently score 350+ in Biology. Specialization in Genetics, Human Physiology and Plant Biology.', subjects: ['Biology', 'Chemistry'], experience: 8, fees: 1500, location: 'Delhi', ratings: 4.7 }
             },
             {
@@ -42,7 +58,7 @@ const seed = async () => {
                 profile: { bio: 'M.Sc Chemistry from IIT Bombay. 10 years of teaching Organic and Physical Chemistry for JEE and NEET. Known for simplifying complex reaction mechanisms.', subjects: ['Chemistry', 'Physics'], experience: 10, fees: 1800, location: 'Mumbai', ratings: 4.8 }
             },
             {
-                user: { name: 'Sunita Rao', email: 'sunita@iitneet.com', phone: '9876543213', showPhone: false, subscriptionStatus: 'active' },
+                user: { name: 'Sunita Rao', email: 'sunita@iitneet.com', phone: '9876543213', showPhone: false, subscriptionStatus: 'none' },
                 profile: { bio: 'B.Tech from NIT Warangal. Mathematics specialist for JEE with 6 years experience. Expert in Calculus, Coordinate Geometry and Algebra. Online and offline classes available.', subjects: ['Mathematics', 'Physics'], experience: 6, fees: 1200, location: 'Hyderabad', ratings: 4.6 }
             },
             {
@@ -50,11 +66,11 @@ const seed = async () => {
                 profile: { bio: 'Senior faculty at a leading Kota coaching. 15 years of NEET Biology and Chemistry teaching. 200+ students in MBBS colleges including AIIMS. Batch and individual classes.', subjects: ['Biology', 'Chemistry'], experience: 15, fees: 2500, location: 'Jaipur', ratings: 4.9 }
             },
             {
-                user: { name: 'Neha Gupta', email: 'neha@iitneet.com', phone: '9876543215', showPhone: true, subscriptionStatus: 'active' },
+                user: { name: 'Neha Gupta', email: 'neha@iitneet.com', phone: '9876543215', showPhone: true, subscriptionStatus: 'none' },
                 profile: { bio: 'M.Sc Mathematics from Delhi University. 5 years of JEE Maths coaching. Friendly teaching style with focus on concept clarity. Flexible timings for working students.', subjects: ['Mathematics'], experience: 5, fees: 1000, location: 'Pune', ratings: 4.5 }
             },
             {
-                user: { name: 'Dr. Suresh Nair', email: 'suresh@iitneet.com', phone: '9876543216', showPhone: false, subscriptionStatus: 'active' },
+                user: { name: 'Dr. Suresh Nair', email: 'suresh@iitneet.com', phone: '9876543216', showPhone: false, subscriptionStatus: 'none' },
                 profile: { bio: 'PhD Physics from IISc Bangalore. 14 years of JEE Advanced coaching. Specializes in Optics, Waves and Thermodynamics. Author of 2 reference books for JEE Physics.', subjects: ['Physics'], experience: 14, fees: 3000, location: 'Bangalore', ratings: 4.9 }
             },
             {
@@ -67,6 +83,11 @@ const seed = async () => {
         for (const t of tutorData) {
             const u = await User.create({ ...t.user, password: 'tutor123', role: 'tutor', isApproved: true });
             const p = await Profile.create({ user: u._id, ...t.profile });
+            // Assign default free plan
+            const endDate = new Date();
+            endDate.setDate(endDate.getDate() + defaultPlan.duration);
+            await UserSubscription.create({ user: u._id, plan: defaultPlan._id, endDate, amountPaid: 0, paymentId: `free_seed_${Date.now()}` });
+            await User.findByIdAndUpdate(u._id, { subscriptionStatus: 'active', subscriptionExpiry: endDate });
             tutors.push({ user: u, profile: p });
         }
         console.log(`Created ${tutors.length} tutors...`);

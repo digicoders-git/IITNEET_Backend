@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
+const { assignDefaultPlan } = require('./subscriptionController');
 
 const generateToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
@@ -21,6 +22,10 @@ exports.register = async (req, res) => {
         }
         const user = await User.create({ name, email, password, role });
         if (user) {
+            // Auto-assign default free plan for tutor/coaching
+            if (role === 'tutor' || role === 'coaching') {
+                await assignDefaultPlan(user._id);
+            }
             res.status(201).json({
                 _id: user._id,
                 name: user.name,
@@ -70,7 +75,7 @@ exports.updateMe = async (req, res) => {
         const user = await User.findByIdAndUpdate(
             req.user.id,
             { name, phone },
-            { new: true }
+            { returnDocument: 'after' }
         ).select('-password');
         res.json(user);
     } catch (error) {

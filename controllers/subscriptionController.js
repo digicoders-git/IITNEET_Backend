@@ -14,9 +14,10 @@ const getRazorpay = () => {
 // ── ADMIN: Create plan
 exports.createPlan = async (req, res) => {
     try {
-        const { name, price, duration, features, forRole } = req.body;
-        if (!name || !price || !duration) return res.status(400).json({ message: 'Name, price and duration required' });
-        const plan = await SubscriptionPlan.create({ name, price, duration, features, forRole });
+        const { name, price, duration, features, forRole, isDefault } = req.body;
+        if (!name || price === undefined || !duration) return res.status(400).json({ message: 'Name, price and duration required' });
+        if (isDefault) await SubscriptionPlan.updateMany({}, { isDefault: false });
+        const plan = await SubscriptionPlan.create({ name, price, duration, features, forRole, isDefault: !!isDefault });
         res.status(201).json(plan);
     } catch (err) { res.status(500).json({ message: err.message }); }
 };
@@ -32,7 +33,8 @@ exports.getPlans = async (req, res) => {
 // ── ADMIN: Update plan
 exports.updatePlan = async (req, res) => {
     try {
-        const plan = await SubscriptionPlan.findByIdAndUpdate(req.params.id, req.body, { new: true });
+        if (req.body.isDefault) await SubscriptionPlan.updateMany({ _id: { $ne: req.params.id } }, { isDefault: false });
+        const plan = await SubscriptionPlan.findByIdAndUpdate(req.params.id, req.body, { returnDocument: 'after' });
         if (!plan) return res.status(404).json({ message: 'Plan not found' });
         res.json(plan);
     } catch (err) { res.status(500).json({ message: err.message }); }
@@ -46,7 +48,7 @@ exports.deletePlan = async (req, res) => {
     } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
-// ── ADMIN: Get all subscriptions (who bought what)
+// ── ADMIN: Get all subscriptions
 exports.getAllSubscriptions = async (req, res) => {
     try {
         const subs = await UserSubscription.find()
@@ -57,7 +59,7 @@ exports.getAllSubscriptions = async (req, res) => {
     } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
-// ── PUBLIC: Get active plans (for tutors/coaching to see)
+// ── PUBLIC: Get active plans
 exports.getActivePlans = async (req, res) => {
     try {
         const role = req.user?.role;
@@ -68,31 +70,86 @@ exports.getActivePlans = async (req, res) => {
     } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
-// ── USER: Purchase a plan (simulated)
-exports.purchasePlan = async (req, res) => {
+// ── INTERNAL: Auto-assign default free plan on registration
+exports.assignDefaultPlan = async (userId) => {
     try {
-        const { planId, paymentId } = req.body;
+        const defaultPlan = await SubscriptionPlan.findOne({ isDefault: true, isActive: true });
+        if (!defaultPlan) return;
+
+        const endDate = new Date();
+        endDate.setDate(endDate.getDate() + defaultPlan.duration);
+
+        await UserSubscription.create({
+            user: userId,
+            plan: defaultPlan._id,
+            endDate,
+            amountPaid: 0,
+            paymentId: `free_default_${Date.now()}`
+        });
+
+        await User.findByIdAndUpdate(userId, {
+            subscriptionStatus: 'active',
+            subscriptionExpiry: endDate
+        });
+    } catch (err) {
+        console.error('assignDefaultPlan error:', err.message);
+    }
+};
+
+// ── USER: Purchase a plan via Razorpay order
+exports.createOrder = async (req, res) => {
+    try {
+        const { planId } = req.body;
+        const plan = await SubscriptionPlan.findById(planId);
+        if (!plan) return res.status(404).json({ message: 'Plan not found' });
+
+        const order = await getRazorpay().orders.create({
+            amount: plan.price * 100,
+            currency: 'INR',
+            receipt: `sub_${Date.now()}`,
+            notes: { planId: planId.toString(), userId: req.user._id.toString() }
+        });
+
+        res.json({
+            orderId: order.id,
+            amount: order.amount,
+            currency: order.currency,
+            keyId: process.env.RAZORPAY_KEY_ID,
+            planName: plan.name
+        });
+    } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+// ── USER: Verify payment and activate subscription
+exports.verifyPurchase = async (req, res) => {
+    try {
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planId } = req.body;
+
+        const body = razorpay_order_id + '|' + razorpay_payment_id;
+        const expectedSignature = crypto
+            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+            .update(body)
+            .digest('hex');
+
+        if (expectedSignature !== razorpay_signature)
+            return res.status(400).json({ message: 'Payment verification failed' });
+
         const plan = await SubscriptionPlan.findById(planId);
         if (!plan) return res.status(404).json({ message: 'Plan not found' });
 
         const endDate = new Date();
         endDate.setDate(endDate.getDate() + plan.duration);
 
-        // Cancel existing active subscription
-        await UserSubscription.updateMany(
-            { user: req.user._id, status: 'active' },
-            { status: 'cancelled' }
-        );
+        await UserSubscription.updateMany({ user: req.user._id, status: 'active' }, { status: 'cancelled' });
 
         const sub = await UserSubscription.create({
             user: req.user._id,
             plan: planId,
             endDate,
             amountPaid: plan.price,
-            paymentId: paymentId || `sim_${Date.now()}`
+            paymentId: razorpay_payment_id
         });
 
-        // Update user subscriptionStatus
         await User.findByIdAndUpdate(req.user._id, {
             subscriptionStatus: 'active',
             subscriptionExpiry: endDate
@@ -107,7 +164,8 @@ exports.purchasePlan = async (req, res) => {
 exports.getMySubscription = async (req, res) => {
     try {
         const sub = await UserSubscription.findOne({ user: req.user._id, status: 'active' })
-            .populate('plan', 'name price duration features');
+            .populate('plan', 'name price duration features isDefault');
         res.json(sub);
     } catch (err) { res.status(500).json({ message: err.message }); }
 };
+

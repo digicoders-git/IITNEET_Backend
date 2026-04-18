@@ -7,6 +7,7 @@ const subscriptionPlanSchema = new mongoose.Schema({
     features: [String],
     forRole: { type: String, enum: ['tutor', 'coaching', 'both'], default: 'both' },
     isActive: { type: Boolean, default: true },
+    isDefault: { type: Boolean, default: false }, // auto-assigned on registration
     createdAt: { type: Date, default: Date.now }
 });
 

@@ -53,7 +53,7 @@ router.post('/upload-photo', protect, upload.single('photo'), async (req, res) =
         await Profile.findOneAndUpdate(
             { user: req.user._id },
             { $set: { profileImage: imageUrl } },
-            { upsert: true, new: true }
+            { upsert: true, returnDocument: 'after' }
         );
         res.json({ imageUrl });
     } catch (err) {
