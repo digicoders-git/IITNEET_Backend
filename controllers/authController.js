@@ -100,3 +100,36 @@ exports.changePassword = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+
+// Create admin - requires ADMIN_SECRET key
+exports.createAdmin = async (req, res) => {
+    try {
+        const { name, email, password, adminSecret } = req.body;
+        if (adminSecret !== process.env.ADMIN_SECRET) {
+            return res.status(403).json({ message: 'Invalid admin secret' });
+        }
+        if (!name || !email || !password)
+            return res.status(400).json({ message: 'Name, email and password required' });
+        const exists = await User.findOne({ email });
+        if (exists) return res.status(400).json({ message: 'Email already in use' });
+        const user = await User.create({ name, email, password, role: 'admin', isApproved: true });
+        res.status(201).json({ message: 'Admin created', email: user.email });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// Admin creates another admin (existing admin only)
+exports.createAdminByAdmin = async (req, res) => {
+    try {
+        const { name, email, password } = req.body;
+        if (!name || !email || !password)
+            return res.status(400).json({ message: 'Name, email and password required' });
+        const exists = await User.findOne({ email });
+        if (exists) return res.status(400).json({ message: 'Email already in use' });
+        const user = await User.create({ name, email, password, role: 'admin', isApproved: true });
+        res.status(201).json({ message: 'Admin created successfully', email: user.email });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
