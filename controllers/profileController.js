@@ -6,12 +6,13 @@ const ContactUnlock = require('../models/ContactUnlock');
 // GET /api/profiles/tutors - public tutor listing with filters
 exports.getTutorListings = async (req, res) => {
     try {
-        const { subject, location, experience, search, page = 1, limit = 12 } = req.query;
+        const { subject, location, experience, search, teachingClass, page = 1, limit = 12 } = req.query;
 
         const profileFilter = {};
         if (subject) profileFilter.subjects = { $regex: subject, $options: 'i' };
         if (location) profileFilter.location = { $regex: location, $options: 'i' };
         if (experience) profileFilter.experience = { $gte: parseInt(experience) };
+        if (teachingClass) profileFilter.teachingClass = { $regex: teachingClass, $options: 'i' };
 
         let profiles = await Profile.find(profileFilter)
             .populate({
@@ -28,6 +29,9 @@ exports.getTutorListings = async (req, res) => {
             profiles = profiles.filter(p =>
                 p.user.name.toLowerCase().includes(s) ||
                 (p.subjects && p.subjects.some(sub => sub.toLowerCase().includes(s))) ||
+                (p.location && p.location.toLowerCase().includes(s)) ||
+                (p.locality && p.locality.toLowerCase().includes(s)) ||
+                (p.pincode && p.pincode.includes(s)) ||
                 (p.bio && p.bio.toLowerCase().includes(s))
             );
         }
@@ -129,16 +133,30 @@ exports.getCoachingProfile = async (req, res) => {
 // PUT /api/profiles/me - tutor/coaching update their own profile
 exports.updateMyProfile = async (req, res) => {
     try {
-        const { bio, subjects, experience, fees, location, courses, facultyDetails, phone, showPhone } = req.body;
+        const {
+            bio, subjects, experience, fees, feesType, location, courses, facultyDetails,
+            phone, showPhone, age, sex, teachingClass, subjectType, competitiveExpert,
+            expertSubject, qualification, availability, schedule, youtubeChannel,
+            pincode, locality, mobileVisibility
+        } = req.body;
 
         const updateData = { updatedAt: Date.now() };
-        if (bio !== undefined) updateData.bio = bio;
-        if (subjects !== undefined) updateData.subjects = Array.isArray(subjects) ? subjects : subjects.split(',').map(s => s.trim());
-        if (experience !== undefined) updateData.experience = experience;
-        if (fees !== undefined) updateData.fees = fees;
-        if (location !== undefined) updateData.location = location;
-        if (courses !== undefined) updateData.courses = Array.isArray(courses) ? courses : courses.split(',').map(c => c.trim());
-        if (facultyDetails !== undefined) updateData.facultyDetails = facultyDetails;
+        const fields = {
+            bio, subjects, experience, fees, feesType, location, courses, facultyDetails,
+            age, sex, teachingClass, subjectType, competitiveExpert, expertSubject,
+            qualification, availability, schedule, youtubeChannel, pincode, locality, mobileVisibility
+        };
+
+        for (const [key, val] of Object.entries(fields)) {
+            if (val !== undefined) {
+                if (key === 'subjects' && !Array.isArray(val))
+                    updateData[key] = val.split(',').map(s => s.trim());
+                else if (key === 'courses' && !Array.isArray(val))
+                    updateData[key] = val.split(',').map(c => c.trim());
+                else
+                    updateData[key] = val;
+            }
+        }
 
         const profile = await Profile.findOneAndUpdate(
             { user: req.user._id },
@@ -146,7 +164,7 @@ exports.updateMyProfile = async (req, res) => {
             { returnDocument: 'after', upsert: true }
         );
 
-        if (phone !== undefined || showPhone !== undefined) {
+        if (phone !== undefined || showPhone !== undefined || mobileVisibility !== undefined) {
             const userUpdate = {};
             if (phone !== undefined) userUpdate.phone = phone;
             if (showPhone !== undefined) userUpdate.showPhone = showPhone;

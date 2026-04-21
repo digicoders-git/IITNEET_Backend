@@ -12,7 +12,7 @@ const app = express();
 app.use(cors({
     origin: function(origin, callback) {
         const allowed = [
-            process.env.CLIENT_URL,
+            // process.env.CLIENT_URL,
             'http://localhost:5173',
             'http://localhost:5174',
             'http://localhost:5175',
